@@ -20,6 +20,8 @@ dist/
 # OpenML dataset cache
 data/*
 !data/.gitkeep
+!data/light_cardclient.csv
+!data/mid_cardclients.csv
 
 # Experiment results (scripts/run_experiment.py)
 results/*

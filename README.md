@@ -10,8 +10,9 @@ interpretability. The slides are in `presentation/presentation.pdf`.
 
 Hello! A few things that might help when you look at this project:
 
-- The three CSV files are not in the repository. The [Data](#data) section says where they come
-  from. Put them into `data/` and run the commands under [Running it](#running-it). The
+- Light and Mid are in `data/`. Hard is too big for GitHub (166 MB), so please download
+  `application_train.csv` from [Kaggle](https://www.kaggle.com/competitions/home-credit-default-risk/data),
+  save it as `data/hard_cardclient.csv` and run the commands under [Running it](#running-it). The
   experiment takes about 4 minutes, almost all of it on the Hard dataset. I ran everything
   with uv and Python 3.12 on macOS.
 - The metric is the class `CTIS` in `iml_interpretability/metric.py`. In `tests/test_ctis.py`
@@ -64,7 +65,8 @@ The code is in `iml_interpretability/metric.py`.
   are unchanged.
 - Mid is the UCI Excel file saved as CSV. The first row still holds `X1`, `X2`, ..., the second
   row the real column names.
-- Hard is `application_train.csv` from Kaggle, renamed. You need a Kaggle account for it.
+- Hard is `application_train.csv` from Kaggle, renamed. You need a Kaggle account for it, and it
+  is not in the repository because it is larger than GitHub's 100 MB limit.
 
 ### Models and split
 
@@ -90,7 +92,7 @@ results above and is not tested with people. The weights in the formula are my o
 
 ## Running it
 
-Put the three CSV files into `data/` first, then:
+Put `hard_cardclient.csv` into `data/` first (see [Data](#data)), then:
 
 ```bash
 uv sync --extra dev
