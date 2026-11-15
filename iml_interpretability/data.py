@@ -1,9 +1,4 @@
-"""Dataset loading.
-
-Every dataset is returned as a :class:`Dataset` with numeric, imputed features so that all
-models in :mod:`iml_interpretability.models` can be fit on it directly. Add further loaders
-(e.g. other OpenML datasets) following the pattern of :func:`load_titanic`.
-"""
+"""Dataset loading. The credit data is returned raw, the model pipelines do the preprocessing."""
 
 from __future__ import annotations
 
@@ -19,10 +14,10 @@ DATA_HOME = Path("data")
 
 @dataclass(frozen=True)
 class Dataset:
-    """A preprocessed tabular classification dataset.
+    """A tabular classification dataset (credit data are preprocessed by the model pipeline).
 
     :param name: Human-readable dataset name, used in result tables.
-    :param X: Numeric feature matrix without missing values.
+    :param X: Feature matrix; may contain categories and missing values.
     :param y: Target vector.
     """
 
@@ -60,3 +55,24 @@ def load_titanic(data_home: str | Path = DATA_HOME) -> Dataset:
     X = pd.get_dummies(X, drop_first=True, dtype=float)
 
     return Dataset(name="titanic", X=X, y=y)
+
+
+def load_credit_datasets(data_home: str | Path = DATA_HOME) -> list[Dataset]:
+    """Read the three credit CSVs from data_home."""
+    data_home = Path(data_home)
+    light = pd.read_csv(data_home / "light_cardclient.csv", sep=";", encoding="utf-8-sig")
+    # The first line contains X1, X2, ...; the second contains actual column names.
+    mid = pd.read_csv(data_home / "mid_cardclients.csv", header=1, encoding="utf-8-sig")
+    hard = pd.read_csv(data_home / "hard_cardclient.csv")
+
+    datasets = []
+    for name, frame, target, identifiers in [
+        ("light_cardclient", light, "Kreditwuerdigkeit", []),
+        ("mid_cardclients", mid, "default payment next month", ["ID"]),
+        ("hard_cardclient", hard, "TARGET", ["SK_ID_CURR"]),
+    ]:
+        if frame[target].isna().any():
+            raise ValueError(f"Missing target values in {name}.")
+        X = frame.drop(columns=[target, *identifiers])
+        datasets.append(Dataset(name=name, X=X, y=frame[target]))
+    return datasets

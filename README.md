@@ -1,98 +1,130 @@
-# iML 26/27 – Exercise 1: Quantifying Interpretability
+# iML 26/27 Exercise 1: Quantifying interpretability
 
-Template repository for the bonus task. **Fork this repository**, replace the example with your own
-work, and add the PDF of your presentation. **You are expected to rewrite this README as well**: by
-the deadline it should describe your approach, how to reproduce your results, and contain your own
-[AI statement](#ai-statement).
+My metric is the Cognitive Tree Interpretability Score (CTIS). The idea is my own, and AI
+helped me work it out. It measures how much a person has to read to explain one prediction of
+a tree model, and it works for single decision trees, random forests and gradient boosting. I
+tested it on three credit datasets and used the results to propose a threshold of
+interpretability. The slides are in `presentation/presentation.pdf`.
 
-> **Deadline: Sunday, November 15th, 2026, 23:59.** Your code and presentation must be submitted by then.
+## Notes for grading
 
-## Tasks
+Hello! A few things that might help when you look at this project:
 
-### Task 1 (1  point): An interpretability metric
+- The three CSV files are not in the repository. The [Data](#data) section says where they come
+  from. Put them into `data/` and run the commands under [Running it](#running-it). The
+  experiment takes about 4 minutes, almost all of it on the Hard dataset. I ran everything
+  with uv and Python 3.12 on macOS.
+- The metric is the class `CTIS` in `iml_interpretability/metric.py`. In `tests/test_ctis.py`
+  there are small trees whose numbers you can check by hand.
+- The threshold of 50 comes from my results, not from a user study. I chose the weights in the
+  formula with help from AI, and they are not fitted to anything. The last slide lists this
+  and the other limitations.
+- Accuracy alone makes the readable trees look fine. On Light and Hard they mostly predict
+  "no risk", which only shows up in the recall.
+- `load_titanic` and `RelativeNumberOfLeaves` are from the course template. I left them in,
+  but the experiment does not use them.
 
-Develop a metric that quantifies model interpretability. It has to work within one model class,
-e.g. for decision trees, random forests and gradient-boosted trees. Then evaluate a few
-inherently interpretable models and/or datasets and investigate the *threshold of
-interpretability*: at what point does a model stop being interpretable?
+Thanks for taking a look!
 
-- A trivial idea would be the *number of features used*. Your metric should go beyond that.
-- We will check that you did not simply copy someone else's interpretability metric.
-- You may use an LLM-based metric. In that case you have to provide evidence that its scores
-  agree with human judgments.
+## The metric
 
-### Task 2 (2 bonus points): Meta-features and interpretability
+For every training observation I follow its path from the root to the leaf and count
 
-Find connections between a dataset's meta-features (e.g. number of samples, number of features,
-class balance, …) and the interpretability, measured with your metric from Task 1, of several
-inherently interpretable models. This repository has no code for Task 2. Structure it as you see fit.
+- `d`: the decisions on the path,
+- `s`: how often the feature changes from one decision to the next,
+- `r`: how often a feature shows up again after its first decision on the path.
 
-### Presentation
+```text
+p(x) = d(x) + 0.5 * s(x) + 0.25 * r(x)
+CTIS = 100 * exp(-(0.7 * mean(p) + 0.3 * log2(1 + L)) / 6)
+```
 
-Prepare a **5-minute presentation** of your metric and results across models and datasets (and, if
-applicable, your Task 2 findings). Commit it as [`presentation/presentation.pdf`](presentation/).
+`mean(p)` is the average over the training observations, so paths that many observations take
+count more. `L` is the number of leaves. The path `[A, B, A]` has `d=3`, `s=2`, `r=1`, so
+`p=4.25`. Higher CTIS means easier to read. A single leaf gets the maximum of about 95.
 
-## Setup
+For an ensemble you have to read one path per tree, so `d`, `s` and `r` are summed over all
+trees and `L` counts the leaves of all trees. Switches and repetitions only count inside one
+tree. A single tree is just an ensemble with one tree, so all scores are comparable.
 
-The repository is an installable Python package. We recommend [uv](https://docs.astral.sh/uv/):
+The code is in `iml_interpretability/metric.py`.
+
+## Experiment
+
+### Data
+
+| Name  | File in `data/`        | Rows    | Features | Target                       | Source |
+|-------|------------------------|---------|----------|------------------------------|--------|
+| Light | `light_cardclient.csv` | 1,000   | 20       | `Kreditwuerdigkeit`          | [Statlog (German Credit Data), UCI](https://archive.ics.uci.edu/dataset/144/statlog-german-credit-data) |
+| Mid   | `mid_cardclients.csv`  | 30,000  | 23       | `default payment next month` | [Default of Credit Card Clients, UCI](https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients) |
+| Hard  | `hard_cardclient.csv`  | 307,511 | 120      | `TARGET`                     | [Home Credit Default Risk, Kaggle](https://www.kaggle.com/competitions/home-credit-default-risk/data) |
+
+- Light is `german.data` from UCI, saved as a CSV with `;` as separator and German column names
+  (`Kontostatus`, `Laufzeit_Monate`, ..., `Kreditwuerdigkeit`). The category codes (`A11`, ...)
+  are unchanged.
+- Mid is the UCI Excel file saved as CSV. The first row still holds `X1`, `X2`, ..., the second
+  row the real column names.
+- Hard is `application_train.csv` from Kaggle, renamed. You need a Kaggle account for it.
+
+### Models and split
+
+Models: decision trees with max depth 1, 3, 5, 10 and no limit, plus random forests and
+gradient boosting with 3, 10 and 100 trees of depth 3. Each dataset gets a stratified 75/25
+split with seed 0. Missing numbers are filled with the training median, categories are one-hot
+encoded, and every one-hot column counts as its own feature. Customer IDs are dropped.
+
+Precision and recall refer to the risk class: bad credit risk (class 2) for Light, default or
+payment difficulties (class 1) for Mid and Hard.
+
+## Results
+
+- Only trees of depth 1 and 3 score above 50. Three trees of depth 3 already drop to about 20,
+  and ensembles with 10 or more trees end up near 0.
+- Accuracy hardly changes with CTIS. The best model below 50 beats the depth-3 tree by 2.4
+  points on Light and by at most 0.1 points on Mid and Hard.
+- Recall does change. On Light and Hard the readable trees almost only predict "no risk". The
+  depth-3 tree finds 5.3 % and 0 % of the risk cases, deeper trees up to 46.7 % and 17.5 %.
+
+I propose CTIS 50 as the threshold, which is about one tree of depth 3. This comes from the
+results above and is not tested with people. The weights in the formula are my own choice.
+
+## Running it
+
+Put the three CSV files into `data/` first, then:
 
 ```bash
 uv sync --extra dev
 uv run pytest
-uv run python scripts/run_experiment.py
+uv run python -m scripts.run_experiment      # writes results/scores.csv (about 4 minutes)
+uv run python -m scripts.plot_results        # charts in results/metric_plots/
+uv run python -m scripts.plot_data_overview  # charts in results/data_plots/
+uv run python -m scripts.plot_trees          # depth-3 trees in results/trees/
 ```
 
-With plain pip:
+With pip instead of uv: `pip install -e ".[dev]"`. Run everything from the repository root.
+`run_experiment` takes `--data-dir` and `--output` if the data is somewhere else.
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-```
+The tree diagrams use German labels (`scripts/tree_labels.py`, based on the UCI descriptions of
+[German Credit](https://archive.ics.uci.edu/dataset/144/statlog-german-credit-data) and
+[Credit Card Clients](https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients)
+and the [Home Credit](https://www.kaggle.com/competitions/home-credit-default-risk/data) column
+descriptions). One-hot splits are shown as "category present?" with "Nein" on the left.
 
-The first run downloads the Titanic dataset from OpenML and caches it in `data/` (relative to the
-directory you run from). You may use that dataset, but dont you want to rather look at something existing?
-
-## Repository structure
+## Files
 
 ```
 iml_interpretability/
-├── data.py        # Dataset container + load_titanic(); add your own datasets here
-├── models.py      # get_models(): the models you compare (example: one decision tree)
-├── metric.py      # InterpretabilityMetric base class + RelativeNumberOfLeaves (example)
-└── evaluate.py    # evaluate(): fits all models on all datasets and computes all metrics
-scripts/
-└── run_experiment.py   # runs evaluate() and writes results/scores.csv
-tests/                  # pytest tests
-presentation/           # put presentation.pdf here
+  data.py       loading the CSVs
+  models.py     the 11 models with preprocessing
+  metric.py     CTIS
+  evaluate.py   fits every model on every dataset
+scripts/        experiment and plots
+tests/          tests for CTIS, the evaluation and the tree labels
+presentation/   presentation.pdf
 ```
-
-The repository runs end to end on a minimal example: a single scikit-learn decision tree on
-Titanic, scored by its number of leaves relative to the maximum possible for its depth (`RelativeNumberOfLeaves` in
-[`iml_interpretability/metric.py`](iml_interpretability/metric.py)). Replace this example with your
-own metric, models and datasets. You are free to restructure everything, as long as the package
-stays installable and your results stay reproducible from the scripts in this repository.
-
-## Code style
-
-Please keep your code clean and consistent. We recommend [ruff](https://docs.astral.sh/ruff/) as
-linter and formatter. A configuration is already included in `pyproject.toml`:
-
-## Submission
-
-- Submit your code and presentation by **Sunday, November 15th, 2026, 23:59**.
-- Your fork contains your code, the scripts that reproduce your results, and
-  `presentation/presentation.pdf`.
-- **Rewrite this README.** Replace the template text with a short description of your approach and
-  how to reproduce your results.
-- **Mandatory:** replace the [AI statement](#ai-statement) below with your own, stating how you
-  used AI tools (or that you did not use any).
 
 ## AI statement
 
-> **Mandatory.** Replace this example with your own: which AI tools you used, for what, and how you
-> checked their output (or that you used none).
-
-*Example:* I created this repository with Claude Code (Claude Opus 5.5). After clarifying the scope
-with it, it generated the code, tests and README based on my own projects as style references. I
-reviewed and edited the result and checked that it runs. I take full responsibility for and
-ownership of the content of this repository.
+The idea for CTIS is my own. AI helped me turn it into the formula. I used Claude Code
+(Claude Opus 5.5) to generate the code and its implementation in this repository, and it
+helped me create the presentation.

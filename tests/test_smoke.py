@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 from sklearn.datasets import make_classification
+from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 
@@ -28,7 +29,20 @@ def test_evaluate_returns_one_row_per_dataset_and_model(dataset):
     models = get_models()
     results = evaluate([dataset], models, [_ConstantMetric()])
     assert len(results) == len(models)
-    assert set(results.columns) == {"dataset", "model", "accuracy", "constant"}
+    assert set(results.columns) == {"dataset", "model", "positive_label", "accuracy", "precision", "recall", "constant"}
+
+
+@pytest.mark.parametrize("prediction, accuracy, precision, recall", [(2, 0.4, 0.4, 1), (1, 0.6, 0, 0)])
+def test_risk_class_metrics(prediction, accuracy, precision, recall):
+    dataset = Dataset("credit", pd.DataFrame({"x": range(20)}), pd.Series([1] * 12 + [2] * 8))
+    result = evaluate(
+        [dataset], {"constant": DummyClassifier(strategy="constant", constant=prediction)}, [],
+        positive_labels={"credit": 2},
+    ).iloc[0]
+    assert result["positive_label"] == 2
+    assert result["accuracy"] == pytest.approx(accuracy)
+    assert result["precision"] == pytest.approx(precision)
+    assert result["recall"] == pytest.approx(recall)
 
 
 def test_relative_number_of_leaves_matches_tree(dataset):

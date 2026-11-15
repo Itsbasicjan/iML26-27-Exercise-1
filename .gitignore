@@ -24,3 +24,7 @@ data/*
 # Experiment results (scripts/run_experiment.py)
 results/*
 !results/.gitkeep
+
+# Slide source, only the PDF is submitted
+presentation/slides.html
+presentation/figures/
